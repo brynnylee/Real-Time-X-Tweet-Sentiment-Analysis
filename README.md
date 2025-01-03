@@ -200,18 +200,16 @@ The model considers the contextual relationship between "absolutely" and "love" 
 - **F1-score**: 0.67
 
 ### **6.2 Evaluation Metrics Explained**:
-- **Precision**: How many predicted positives are actually positive.
-  \[
-  \text{Precision} = \frac{\text{True Positives}}{\text{True Positives + False Positives}}
-  \]
-- **Recall**: How many actual positives were correctly predicted.
-  \[
-  \text{Recall} = \frac{\text{True Positives}}{\text{True Positives + False Negatives}}
-  \]
-- **F1-score**: Harmonic mean of precision and recall.
-  \[
-  \text{F1-score} = 2 \times \frac{\text{Precision} \times \text{Recall}}{\text{Precision + Recall}}
-  \]
+
+- **Precision**: How many predicted positives are actually positive.  
+  `Precision = True Positives / (True Positives + False Positives)`
+
+- **Recall**: How many actual positives were correctly predicted.  
+  `Recall = True Positives / (True Positives + False Negatives)`
+
+- **F1-score**: Harmonic mean of precision and recall.  
+  `F1-score = 2 * (Precision * Recall) / (Precision + Recall)`
+
 
 ### **6.3 Confusion Matrix**
 The confusion matrix provides insights into the model's classification performance by comparing true labels with predicted labels.
