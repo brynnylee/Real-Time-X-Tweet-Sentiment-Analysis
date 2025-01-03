@@ -1,6 +1,3 @@
-# Real-Time-X-Tweet-Sentiment-Analysis
-Real-Time Streaming X(Tweet) Sentiment Analysis on Influencers
-
 <div style="display: flex; flex-direction: column; align-items: center;">
 
 # Real-Time Streaming X(Tweet) Sentiment Analysis on Influencers
