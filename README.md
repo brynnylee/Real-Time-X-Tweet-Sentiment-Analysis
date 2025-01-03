@@ -25,25 +25,40 @@
 
 ## 1. Introduction
 
-Influencers play a pivotal role in shaping public perception. By analyzing the sentiment of tweets directed at these figures, we can uncover trends and insights into public opinion. This project utilizes a real-time sentiment analysis pipeline, leveraging distributed data processing with Apache Spark, Delta Lake, and Databricks, alongside a Hugging Face transformer for sentiment classification.
+
+Influencers play a pivotal role in shaping public perception. By analyzing the sentiment of tweets directed at these figures, we can uncover trends and insights into public opinion. This project utilizes a real-time sentiment analysis pipeline, leveraging distributed data processing with **Apache Spark**, **Delta Lake**, and **Databricks**, alongside a **Hugging Face transformer** for sentiment classification.
+
+### **Key Concepts**:
+- **Sentiment Analysis**: A natural language processing (NLP) technique used to determine the emotional tone (positive, neutral, negative) behind a body of text.
+- **Transformer Models**: Deep learning models that excel at NLP tasks by understanding context bidirectionally. Hugging Face’s BERT-based sentiment classifier is an example.
+
 
 ---
 
 ## 2. Problem Statement
 
 This project aims to:
-- Build a scalable, real-time tweet sentiment analysis pipeline.
-- Capture influencer sentiment trends and categorize them as positive, negative, or neutral.
+- Build a **scalable, real-time tweet sentiment analysis pipeline**.
+- Capture influencer sentiment trends and categorize them as **positive, negative, or neutral**.
 - Identify patterns in influencer mentions and visualize sentiment shifts over time.
+
 
 ---
 
 ## 3. Project Architecture
 
-The analysis follows a medallion data architecture:
+
+The analysis follows a **medallion data architecture**:
+
 - **Bronze Layer**: Raw tweet ingestion.
 - **Silver Layer**: Preprocessed data with cleaned text and structured fields.
 - **Gold Layer**: Sentiment inference results with enriched metadata.
+
+### **Why Medallion Architecture?**
+The medallion architecture organizes data into layers to enhance data quality:
+- **Bronze**: Raw, unprocessed data.
+- **Silver**: Cleaned, transformed data.
+- **Gold**: Enriched, business-ready data for downstream analysis.
 
 Key technologies used:
 
@@ -52,10 +67,11 @@ Key technologies used:
 <img width="747" alt="Screenshot 2025-01-03 at 1 42 58 PM" src="https://github.com/user-attachments/assets/40e0db47-2d96-44b2-9e33-c0d70b1db424" />
 
 - **Apache Spark** for distributed processing.
-- **Delta Lake** for ACID-compliant storage.
+- **Delta Lake** for ACID-compliant storage (Atomicity, Consistency, Isolation, Durability).
 - **Hugging Face Transformer** for sentiment classification.
 - **MLflow** for tracking model performance.
 - **Databricks** for streamlined development and execution.
+
 
 
 ---
@@ -64,10 +80,11 @@ Key technologies used:
 ## 4. Data Ingestion and Medallion Pipeline
 
 ### 4.1 Pipeline Overview
-This end-to-end pipeline processes over 200,000 tweets, transforming raw data into structured, sentiment-enriched datasets.
+This end-to-end pipeline processes over **200,000 tweets**, transforming raw data into structured, sentiment-enriched datasets.
+
 
 ### 4.2 Data Source
-- Tweets were ingested in JSON format.
+- Tweets were ingested in **JSON format**.
 - Fields included:
   - `date`: Timestamp of the tweet.
   - `user`: Author of the tweet.
@@ -85,54 +102,125 @@ This end-to-end pipeline processes over 200,000 tweets, transforming raw data in
 ### 5.1 Bronze Data
 The **Bronze Layer** stores raw ingested data without transformations.
 
-#### Key Steps:
-- **Schema Enforcement**: JSON schema defined to structure the data.
-- **Streaming Input**: Databricks Auto Loader streams new JSON files into Delta Lake.
-- **Data Columns**:
+#### **Key Steps**:
+1. **Schema Enforcement**:
+   - The schema defines the structure of the data to ensure consistency.
+   - *Why important?*: Prevents errors during data ingestion by rejecting incompatible formats.
+   
+   Example Schema:
+   ```json
+   {
+     "date": "string",
+     "user": "string",
+     "text": "string",
+     "sentiment": "string",
+     "source_file": "string"
+   }
+    ```
+2. **Streaming Input**:
+- Utilized Databricks Auto Loader to stream JSON files from the source location to the Delta Lake Bronze Table.
+- *Why Streaming?*: Streaming ensures real-time updates as new tweets arrive.
+  
+3. **Final Columns**:
   - `date`, `user`, `text`, `sentiment`, `source_file`, `processing_time`.
 
 ---
 
-### 5.2 Silver Data
+### **5.2 Silver Data**
 The **Silver Layer** applies preprocessing and transformations.
 
-#### Key Steps:
-- **Timestamp Conversion**: String dates converted to timestamp format.
-- **Mention Extraction**: Extracted `@username` mentions.
-- **Text Cleaning**: Removed mentions and URLs from the tweet text.
-- **Columns**:
+#### **Key Steps**:
+1. **Timestamp Conversion**:
+   - Transformed string `date` fields into timestamp format to facilitate time-based queries.
+   - Example:
+     ```python
+     silver_data = bronze_data.withColumn("timestamp", to_timestamp(col("date"), "EEE MMM dd HH:mm:ss zzz yyyy"))
+     ```
+
+2. **Mention Extraction**:
+   - Extracted mentions (`@username`) from the text to analyze interactions.
+   - Used `regexp_replace` and `split` to clean and extract mentions.
+   - Example:
+     ```python
+     silver_data = silver_data.withColumn("mention", explode(split(regexp_replace(col("text"), "[^@\\w]", " "), " "))) \
+                              .filter(col("mention").startswith("@") & col("mention").rlike("^@\\w+"))
+     ```
+
+3. **Text Cleaning**:
+   - Removed mentions, hashtags, and URLs from the text to prevent noise during sentiment analysis.
+   - Example:
+     ```python
+     cleaned_text = regexp_replace(col("text"), "@\\w+", "")  # Remove @mentions
+     cleaned_text = regexp_replace(cleaned_text, "http\\S+", "")  # Remove URLs
+     ```
+### **Why is Text Cleaning Important?**
+Text cleaning improves the accuracy of sentiment analysis by removing irrelevant components like URLs and mentions that don’t contribute to sentiment but can confuse the model.
+
+
+- **Final Columns**:
   - `timestamp`, `mention`, `cleaned_text`, `sentiment`.
 
 ---
 
-### 5.3 Gold Data
+### **5.3 Gold Data**
 The **Gold Layer** enriches data with real-time sentiment predictions.
 
-#### Key Steps:
-- **Sentiment Model Inference**: Hugging Face sentiment transformer applied to `cleaned_text`.
-- **Prediction Fields**:
-  - `predicted_score`: Confidence score of sentiment prediction.
-  - `predicted_sentiment`: Predicted label (`positive`, `negative`, `neutral`).
-  - `sentiment_id` and `predicted_sentiment_id` for numerical representation.
+#### **Key Steps**:
+1. **Sentiment Model Inference**:
+   - Applied the Hugging Face transformer sentiment model to the `cleaned_text` column.
+   - The transformer model is fine-tuned to classify the sentiment as `positive`, `neutral`, or `negative`.
+   - Example:
+     ```python
+     sentiment_udf = mlflow.pyfunc.spark_udf(spark, model_uri="models:/HF_TWEET_SENTIMENT/production")
+     gold_data = silver_data.withColumn("predicted_sentiment", sentiment_udf(col("cleaned_text")))
+     ```
+
+2. **Prediction Fields**:
+   - `predicted_score`: Confidence score of the prediction (scaled from 0 to 100).
+   - `predicted_sentiment`: Predicted sentiment label (`POS`, `NEU`, `NEG`).
+   - `sentiment_id` and `predicted_sentiment_id`: Numerical representations for `positive`, `neutral`, and `negative`.
+   
+### **Understanding Transformer Inference**
+- Hugging Face transformers use attention mechanisms to understand relationships between words in both forward and backward contexts, unlike traditional sequential models.
+- Example:
+Input: "I absolutely love this product!"  
+Prediction: Positive  
+The model considers the contextual relationship between "absolutely" and "love" to infer sentiment.
+
   
 ---
 
 ## 6. Model Inference and Evaluation
 
-### 6.1 Hugging Face Sentiment Model
-- Pre-trained transformer loaded using **MLflow** for real-time inference.
-- Model achieved **75% precision** on tweet sentiment classification.
+### **6.1 Hugging Face Sentiment Model**
+- Pre-trained BERT-based transformer loaded using **MLflow** for real-time inference.
+- The model was deployed at the **production** stage for live predictions.
+- **Precision**: 0.75  
+- **Recall**: 0.66  
+- **F1-score**: 0.67
 
-### 6.2 Evaluation Metrics
-- Precision: 0.75
-- Recall: 0.66
-- F1-score: 0.67
+### **6.2 Evaluation Metrics Explained**:
+- **Precision**: How many predicted positives are actually positive.
+  \[
+  \text{Precision} = \frac{\text{True Positives}}{\text{True Positives + False Positives}}
+  \]
+- **Recall**: How many actual positives were correctly predicted.
+  \[
+  \text{Recall} = \frac{\text{True Positives}}{\text{True Positives + False Negatives}}
+  \]
+- **F1-score**: Harmonic mean of precision and recall.
+  \[
+  \text{F1-score} = 2 \times \frac{\text{Precision} \times \text{Recall}}{\text{Precision + Recall}}
+  \]
 
-### 6.3 Confusion Matrix
+### **6.3 Confusion Matrix**
+The confusion matrix provides insights into the model's classification performance by comparing true labels with predicted labels.
+
 | **True Sentiment** | **Predicted Positive** | **Predicted Negative** |
 |-------------------|------------------------|------------------------|
 | Positive           | 420                    | 120                    |
 | Negative           | 200                    | 310                    |
+
 
 Visualization:
 
@@ -162,7 +250,7 @@ Visualization:
 
 
 ### 7.3 Visualization
-Interactive bar charts showing the top 20 influencers by sentiment are available for exploration.
+Interactive bar charts showing the top 20 influencers by sentiment show sentiment breakdown across influencer mentions.
 
 <img width="806" alt="Screenshot 2025-01-03 at 1 47 50 PM" src="https://github.com/user-attachments/assets/29b23575-6b95-43e2-93f5-39617db1bacf" />
 
@@ -182,7 +270,13 @@ The Spark pipeline was optimized to handle **200,000+ tweets** efficiently. Belo
 
 ### **8.2 Observations from Spark UI**
 
-To ensure optimal performance, the following five dimensions were reviewed using **Spark UI metrics**:
+### **Key Concepts for Optimization include:**
+- **Spill**: When data exceeds memory capacity and is written to disk.
+- **Skew**: Uneven distribution of data across partitions.
+- **Shuffle**: Network data transfer during wide transformations.
+- **Serialization**: Converting objects into byte streams for transmission.
+
+To ensure optimal performance, the following were reviewed using **Spark UI metrics**:
 
 <img width="1728" alt="Executors_1" src="https://github.com/user-attachments/assets/55a96d1b-45ed-4f6c-b265-e479eba18c36" />
 
